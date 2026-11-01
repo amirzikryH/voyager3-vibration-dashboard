@@ -1,0 +1,10 @@
+{
+  "sampling_frequency": 512,
+  "adc_num_samples": 512,
+  "axis_select": "111",
+  "sleep_dur": 0,
+  "com_port": null,
+  "model_dir": null,
+  "healthy_label": "Normal",
+  "rms_threshold_g": 0.5
+}

@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intelligent Wireless Sensor System (IWSS)</title>
+<style>
+  /* Design tokens shared with IWSS-dashboard */
+  :root{
+    --paper:#F4F6F8; --panel:#FFFFFF; --raised:#F8FAFB; --line:#E1E6EB; --grid:#EEF1F4;
+    --ink:#16202A; --text:#16202A; --muted:#5F6C79; --dim:#8A96A3;
+    --accent:#2459C7;
+    --live:#1E9E5A; --wait:#C98A0B; --err:#C8323F;
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    font-variant-numeric:tabular-nums}
+  body{padding:22px 22px 36px;max-width:1180px;margin:0 auto}
+
+  .topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand svg{flex:none}
+  .brand h1{font-size:20px;font-weight:650;letter-spacing:-.01em;margin:0}
+  .brand p{margin:1px 0 0;font-size:12px;color:var(--muted)}
+  .spacer{flex:1}
+
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;
+        font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .pill.live .dot{background:var(--live)}
+  .pill.wait .dot{background:var(--wait)}
+  .pill.err  .dot{background:var(--err)}
+
+  .btn{font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);background:var(--panel);
+       border:1px solid var(--line);border-radius:8px;padding:7px 14px;cursor:pointer;transition:background .15s,border-color .15s}
+  .btn:hover{border-color:#C9D1D9;background:var(--raised)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:transparent}
+  .btn.primary:hover{background:#1E4DB0}
+  .btn.ghost:hover{border-color:var(--err);color:var(--err)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.sm{padding:5px 11px;font-size:12.5px}
+
+  /* status strip: one sheet split by hairlines, like the IWSS stats row */
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:14px;
+        background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+  .grid .card{padding:10px 16px;border-left:1px solid var(--line);min-width:0}
+  .grid .card:first-child{border-left:none}
+  @media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}
+    .grid .card:nth-child(3){border-left:none}
+    .grid .card:nth-child(n+3){border-top:1px solid var(--line)}}
+  @media(max-width:480px){.grid{grid-template-columns:1fr}
+    .grid .card{border-left:none}.grid .card+.card{border-top:1px solid var(--line)}}
+  .card .k{font-size:12px;color:var(--muted);margin-bottom:4px}
+  .card .v{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;min-height:26px}
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+  .tag::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .tag.ok::before{background:var(--live)}
+  .tag.warn::before{background:var(--wait)}
+  .tag.bad{color:var(--err)} .tag.bad::before{background:var(--err)}
+  .tag.idle{color:var(--muted)}
+  .card input.com{width:100%;font:600 14px "Cascadia Mono",Consolas,monospace;color:var(--ink);
+        background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;outline:none}
+  .card input.com:focus{border-color:var(--accent)}
+  .card .comhint{font-size:11px;color:var(--dim);margin-top:4px}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:14px}
+  .panel h2{margin:0 0 14px;font-size:14px;font-weight:650;color:var(--ink)}
+  .panel .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;flex-wrap:wrap}
+  .panel .head h2{margin:0}
+
+  .fields{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end}
+  @media(max-width:720px){.fields{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:420px){.fields{grid-template-columns:1fr}}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .field input,.field select{width:100%;font-family:inherit;font-size:14px;color:var(--ink);
+        background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+  .field input:focus,.field select:focus{border-color:var(--accent)}
+  .row{display:flex;justify-content:flex-end;margin-top:14px;gap:10px}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px}
+
+  .axes{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:10px}
+  @media(max-width:560px){.axes{grid-template-columns:1fr}
+    .axis{border-left:none !important}.axis+.axis{border-top:1px solid var(--line)}}
+  .axis{padding:12px 16px;border-left:1px solid var(--line)}
+  .axis:first-child{border-left:none}
+  .axis .name{font-size:12px;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+  .axis .name::before{content:"";width:10px;height:3px;border-radius:2px;background:var(--axc)}
+  #axisX{--axc:#2459C7} #axisY{--axc:#0E8A68} #axisZ{--axc:#B32F6E}
+  .axis .num{font-size:26px;font-weight:600;letter-spacing:-.01em;line-height:1.1}
+  .axis .unit{font-size:13px;color:var(--muted);margin-left:4px}
+  .axis.active .name{color:var(--ink);font-weight:600}
+
+  .meta{display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--muted)}
+  .meta b{color:var(--ink);font-weight:600}
+
+  .errline{font-size:12.5px;color:var(--err);min-height:18px;padding:0 4px}
+  .errline:empty{display:none}
+
+  /* prediction panel */
+  .pred{display:grid;grid-template-columns:140px 1fr;gap:24px;align-items:center}
+  @media(max-width:640px){.pred{grid-template-columns:1fr;justify-items:center}}
+  .turbwrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .statusicon{width:96px;height:96px}
+  .statusicon .icon-idle,.statusicon .icon-healthy,.statusicon .icon-fault{display:none}
+  .statusicon.idle .icon-idle{display:block}
+  .statusicon.healthy .icon-healthy{display:block}
+  .statusicon.fault .icon-fault{display:block}
+  .turbstate{font-size:12px;color:var(--muted)}
+  .predbody{width:100%}
+  .predhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .predhead h2{margin:0;font-size:14px;font-weight:650;color:var(--ink)}
+  .predmain{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap;margin-bottom:12px}
+  .predlabel{font-size:30px;font-weight:650;letter-spacing:-.01em;line-height:1}
+  .predlabel.ok{color:var(--live)} .predlabel.bad{color:var(--err)}
+  .predmeta{display:flex;gap:20px;font-size:12.5px;color:var(--muted)}
+  .predmeta b{color:var(--ink);font-weight:600}
+  .probbars{display:flex;flex-direction:column;gap:5px;margin-bottom:8px}
+  .pbar{display:grid;grid-template-columns:60px 1fr 46px;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .pbar .track{height:6px;background:var(--grid);border-radius:4px;overflow:hidden}
+  .pbar .fill{display:block;height:100%;background:var(--dim);border-radius:4px;transition:width .3s}
+  .pbar.top .fill{background:var(--accent)} .pbar.top{color:var(--ink)}
+  .predwarn{font-size:12px;color:var(--wait);min-height:16px}
+  .predwarn:empty{display:none}
+
+  .plots{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:720px){.plots{grid-template-columns:1fr}}
+  .plotcol{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .plothdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .plothdr>span:first-child{font-size:14px;font-weight:650;color:var(--ink)}
+  .plothdr .u{font-size:12px;color:var(--muted)}
+  .freqrange{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .freqrange input{width:58px;font-family:inherit;font-size:12.5px;color:var(--ink);
+        background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 6px;outline:none}
+  .freqrange input:focus{border-color:var(--accent)}
+  .prow{display:flex;align-items:center;gap:8px}
+  .axtag{width:16px;font-size:13px;font-weight:650;text-align:center;color:var(--muted)}
+  .axtag.x{color:#2459C7} .axtag.y{color:#0E8A68} .axtag.z{color:#B32F6E}
+  canvas.plot{flex:1;min-width:0;width:100%;height:92px;display:block;background:var(--panel)}
+  canvas.plot.wide{height:150px}
+  .legend{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+  .legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:2px;vertical-align:middle}
+  .legend .lx{background:#2459C7}.legend .ly{background:#0E8A68}.legend .lz{background:#B32F6E}
+
+  .recind{display:flex;align-items:center;gap:6px}
+  .axled{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;
+         font-size:12px;font-weight:650;color:var(--dim);background:var(--raised);border:1px solid var(--line)}
+  .axled.on{color:#fff;background:var(--live);border-color:transparent}
+  .recind .segcount{font-size:12.5px;color:var(--muted);margin-left:8px}
+  .recind .segcount b{color:var(--ink);font-weight:600}
+  .folderrow{display:flex;gap:10px;margin-bottom:14px}
+  .folderrow input{flex:1;min-width:0;font-family:inherit;font-size:13px;color:var(--ink);
+        background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:7px 10px;outline:none}
+  .recfields{grid-template-columns:repeat(4,1fr)}
+  .filenamerow{display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 12px;
+        background:var(--raised);border:1px solid var(--line);border-radius:8px;flex-wrap:wrap}
+  .filenamerow .fnlabel{font-size:12px;color:var(--muted)}
+  .filenamerow code{font-family:"Cascadia Mono",Consolas,monospace;font-size:13px;color:var(--accent);word-break:break-all}
+  .foot{margin-top:18px;font-size:11.5px;color:var(--dim);text-align:center}
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 48 48" fill="none" stroke="#2459C7"
+           stroke-width="3" stroke-linecap="round" aria-hidden="true">
+        <path d="M10 18a20 20 0 0 1 28 0"/>
+        <path d="M15 23a13 13 0 0 1 18 0"/>
+        <path d="M20 28a6 6 0 0 1 8 0"/>
+        <rect x="16" y="33" width="16" height="10" rx="2" fill="#EAF0FB"/>
+        <path d="M19 38h3l1.5-2.5 2 5 1.5-2.5h2" stroke-width="1.8"/>
+      </svg>
+      <div>
+        <h1>Intelligent Wireless Sensor System</h1>
+        <p>Voyager3 · SmartMesh</p>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div id="modePill" class="pill"><span class="dot"></span><span id="modeText">Idle</span></div>
+    <button id="connectBtn" class="btn primary">Connect</button>
+    <button id="disconnectBtn" class="btn ghost" disabled>Disconnect</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="k">Manager</div>
+      <div class="v"><span id="mgrTag" class="tag idle">Disconnected</span></div>
+    </div>
+    <div class="card">
+      <div class="k">Sensor / Mote</div>
+      <div class="v"><span id="moteTag" class="tag idle">—</span></div>
+    </div>
+    <div class="card">
+      <div class="k">Data flow</div>
+      <div class="v"><span id="flowTag" class="tag idle">Idle</span></div>
+    </div>
+    <div class="card">
+      <div class="k">COM port</div>
+      <div class="v"><input id="fCom" class="com" type="text" placeholder="e.g. COM6"></div>
+      <div class="comhint">leave blank to auto-detect · applied on Connect</div>
+    </div>
+  </div>
+
+  <!-- Prediction + reactive turbine -->
+  <div class="panel pred">
+    <div class="turbwrap">
+      <svg id="statusIcon" viewBox="0 0 120 120" class="statusicon idle">
+        <g class="icon-idle">
+          <circle cx="60" cy="60" r="46" fill="none" stroke="var(--dim)" stroke-width="4"/>
+          <line x1="42" y1="60" x2="78" y2="60" stroke="var(--dim)" stroke-width="6" stroke-linecap="round"/>
+        </g>
+        <g class="icon-healthy">
+          <path d="M60 14 L98 28 V58 C98 84 82 100 60 108 C38 100 22 84 22 58 V28 Z"
+                fill="none" stroke="var(--live)" stroke-width="5" stroke-linejoin="round"/>
+          <path d="M42 61 L54 74 L80 46" fill="none" stroke="var(--live)"
+                stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g class="icon-fault">
+          <path d="M60 16 L104 96 H16 Z" fill="none" stroke="var(--err)" stroke-width="5" stroke-linejoin="round"/>
+          <line x1="60" y1="46" x2="60" y2="72" stroke="var(--err)" stroke-width="7" stroke-linecap="round"/>
+          <circle cx="60" cy="86" r="4.5" fill="var(--err)"/>
+        </g>
+      </svg>
+      <div class="turbstate" id="turbState">idle</div>
+    </div>
+
+    <div class="predbody">
+      <div class="predhead">
+        <h2>Fault prediction</h2>
+        <button id="predBtn" class="btn primary">Run prediction</button>
+      </div>
+      <div class="predmain">
+        <div class="predlabel" id="predLabel">—</div>
+        <div class="predmeta">
+          <span>confidence <b id="predConf">—</b></span>
+          <span>latency <b id="predLat">—</b></span>
+        </div>
+      </div>
+      <div class="probbars" id="probBars"></div>
+      <div class="predwarn" id="predWarn"></div>
+    </div>
+  </div>
+
+  <!-- Plots: time domain | frequency domain -->
+  <div class="panel plots">
+    <div class="plotcol">
+      <div class="plothdr"><span>Time domain</span><span class="u">acceleration (g) vs sample</span></div>
+      <div class="prow"><span class="axtag x">X</span><canvas id="tX" class="plot"></canvas></div>
+      <div class="prow"><span class="axtag y">Y</span><canvas id="tY" class="plot"></canvas></div>
+      <div class="prow"><span class="axtag z">Z</span><canvas id="tZ" class="plot"></canvas></div>
+    </div>
+    <div class="plotcol">
+      <div class="plothdr">
+        <span>Frequency domain</span>
+        <span class="freqrange">
+          <input id="fftMin" type="number" value="0" min="0"> –
+          <input id="fftMax" type="number" value="200" min="1"> Hz · magnitude (g)
+        </span>
+      </div>
+      <div class="prow"><span class="axtag x">X</span><canvas id="fX" class="plot"></canvas></div>
+      <div class="prow"><span class="axtag y">Y</span><canvas id="fY" class="plot"></canvas></div>
+      <div class="prow"><span class="axtag z">Z</span><canvas id="fZ" class="plot"></canvas></div>
+    </div>
+  </div>
+
+  <!-- RMS trend -->
+  <div class="panel">
+    <div class="head">
+      <h2>RMS trend <span class="u" style="font-weight:400;font-size:12px;color:var(--muted)">g per reading</span></h2>
+      <span class="legend"><i class="lx"></i>X <i class="ly"></i>Y <i class="lz"></i>Z</span>
+    </div>
+    <canvas id="rmsTrend" class="plot wide"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Sampling parameters</h2>
+    <div class="fields">
+      <div class="field">
+        <label>Frequency (Hz)</label>
+        <input id="fFreq" type="number" min="1" value="512">
+      </div>
+      <div class="field">
+        <label>ADC samples</label>
+        <input id="fSamp" type="number" min="1" value="512">
+      </div>
+      <div class="field">
+        <label>Axes</label>
+        <select id="fAxis">
+          <option value="XYZ">X + Y + Z</option>
+          <option value="XY">X + Y</option>
+          <option value="XZ">X + Z</option>
+          <option value="YZ">Y + Z</option>
+          <option value="X">X only</option>
+          <option value="Y">Y only</option>
+          <option value="Z">Z only</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sleep (s)</label>
+        <select id="fSleep">
+          <option>0</option><option>15</option><option>30</option><option>60</option>
+          <option>120</option><option>240</option><option>480</option><option>960</option><option>1920</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <button id="applyBtn" class="btn primary">Apply parameters</button>
+    </div>
+    <div class="hint">Above 1024 samples the sensor streams raw data only (no on-device FFT).</div>
+  </div>
+
+  <div class="panel">
+    <div class="head">
+      <h2>RMS acceleration</h2>
+      <button id="offsetBtn" class="btn sm">Remove ADC offset</button>
+    </div>
+    <div class="axes">
+      <div class="axis" id="axisX"><div class="name">X AXIS</div><div><span class="num" id="valX">—</span><span class="unit">g</span></div></div>
+      <div class="axis" id="axisY"><div class="name">Y AXIS</div><div><span class="num" id="valY">—</span><span class="unit">g</span></div></div>
+      <div class="axis" id="axisZ"><div class="name">Z AXIS</div><div><span class="num" id="valZ">—</span><span class="unit">g</span></div></div>
+    </div>
+    <div class="meta">
+      <div>last packet <b id="lastSeen">—</b></div>
+      <div>packets <b id="pkts">0</b></div>
+      <div>frames <b id="frames">0</b></div>
+      <div>offset <b id="offState">off</b></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="head">
+      <h2>Record data</h2>
+      <div class="recind">
+        <span class="axled" id="ledX">X</span>
+        <span class="axled" id="ledY">Y</span>
+        <span class="axled" id="ledZ">Z</span>
+        <span class="segcount">segments <b id="segCount">0</b></span>
+      </div>
+    </div>
+
+    <div class="folderrow">
+      <input id="fFolder" type="text" placeholder="No folder chosen — click Browse" readonly>
+      <button id="browseBtn" class="btn sm">Browse…</button>
+    </div>
+
+    <div class="fields recfields">
+      <div class="field">
+        <label>Filename</label>
+        <input id="rName" type="text" placeholder="e.g. test_01 (blank = timestamp)">
+      </div>
+      <div class="field">
+        <label>Format</label>
+        <select id="rFmt">
+          <option>csv</option><option>xlsx</option><option>txt</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="filenamerow">
+      <span class="fnlabel">Filename</span>
+      <code id="fnPreview">—</code>
+    </div>
+
+    <div class="row">
+      <button id="recBtn" class="btn primary">Start recording</button>
+    </div>
+    <div class="hint" id="recHint">Saves one segment each time all enabled axes (X, Y, Z) have arrived.</div>
+  </div>
+
+  <div class="errline" id="errLine"></div>
+  <div class="foot">Local monitor · data stays on this machine</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const CSS = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const AXCOL = {x:"#2459C7", y:"#0E8A68", z:"#B32F6E"};
+
+function prep(canvas){
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio||1;
+  if(canvas.width !== Math.round(r.width*dpr) || canvas.height !== Math.round(r.height*dpr)){
+    canvas.width = Math.round(r.width*dpr); canvas.height = Math.round(r.height*dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w:r.width, h:r.height};
+}
+// shared tick helper
+function tickText(ctx,txt,x,y,align){
+  ctx.fillStyle=CSS("--muted"); ctx.font='10px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign=align||"left"; ctx.textBaseline="middle"; ctx.fillText(txt,x,y);
+}
+// generate ~count evenly-spaced "nice" tick values between lo and hi
+function niceTicks(lo, hi, count){
+  const span = hi - lo;
+  if(span <= 0) return [lo];
+  const raw = span / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  let step;
+  if(norm < 1.5) step = 1*mag;
+  else if(norm < 3) step = 2*mag;
+  else if(norm < 7) step = 5*mag;
+  else step = 10*mag;
+  const start = Math.ceil(lo/step)*step;
+  const ticks = [];
+  for(let v=start; v<=hi+step*1e-6; v+=step) ticks.push(Math.abs(v)<step*1e-6?0:v);
+  return ticks;
+}
+function fmtTick(v){
+  const a=Math.abs(v);
+  if(a===0) return "0";
+  if(a<0.001||a>=10000) return v.toExponential(1);
+  if(a<0.01) return v.toFixed(4);
+  if(a<1) return v.toFixed(2);
+  if(a<10) return v.toFixed(1);
+  return String(Math.round(v));
+}
+// time-domain line plot: y in g, x = sample index
+function drawLine(canvas, series, ymin, ymax){
+  const {ctx,w,h} = prep(canvas);
+  ctx.clearRect(0,0,w,h);
+  const padL=50,padR=10,padT=8,padB=18, iw=w-padL-padR, ih=h-padT-padB;
+  if(ymax===ymin){ymax=1;ymin=-1;}
+  const Y = v => padT + ih*(1-(v-ymin)/(ymax-ymin));
+  ctx.strokeStyle=CSS("--line"); ctx.lineWidth=1; ctx.strokeRect(padL,padT,iw,ih);
+  for(const tv of niceTicks(ymin,ymax,3)){
+    const y=Y(tv);
+    ctx.strokeStyle=CSS("--grid");
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+    tickText(ctx, fmtTick(tv), padL-5, y, "right");
+  }
+  const N = series[0] && series[0].data ? series[0].data.length : 0;
+  if(N) for(const tv of niceTicks(0,N,4)){
+    const x=padL+iw*(tv/N);
+    tickText(ctx, String(Math.round(tv)), x, h-6, "center");
+  }
+  for(const s of series){
+    const d=s.data; if(!d||d.length<2) continue;
+    ctx.strokeStyle=s.color; ctx.lineWidth=1.1; ctx.lineJoin="round"; ctx.beginPath();
+    for(let i=0;i<d.length;i++){ const x=padL+iw*(i/(d.length-1)); i?ctx.lineTo(x,Y(d[i])):ctx.moveTo(x,Y(d[i])); }
+    ctx.stroke();
+  }
+}
+// FFT plot: y = magnitude (g), x = frequency (Hz) within [fmin,fmax]
+function drawFFT(canvas, mag, fs, fmin, fmax, ymax, color){
+  const {ctx,w,h} = prep(canvas);
+  ctx.clearRect(0,0,w,h);
+  const padL=50,padR=10,padT=8,padB=18, iw=w-padL-padR, ih=h-padT-padB;
+  if(ymax<=0) ymax=1;
+  const Y = v => padT + ih*(1-Math.min(v,ymax)/ymax);
+  ctx.strokeStyle=CSS("--line"); ctx.lineWidth=1; ctx.strokeRect(padL,padT,iw,ih);
+  for(const tv of niceTicks(0,ymax,3)){
+    const y=Y(tv);
+    ctx.strokeStyle=CSS("--grid");
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+    tickText(ctx, fmtTick(tv), padL-5, y, "right");
+  }
+  for(const tv of niceTicks(fmin,fmax,5)){
+    const x=padL+iw*((tv-fmin)/(fmax-fmin||1));
+    tickText(ctx, String(Math.round(tv)), x, h-6, "center");
+  }
+  if(!mag||mag.length<2) return;
+  const N=(mag.length-1)*2, binHz=fs/N;
+  ctx.strokeStyle=color; ctx.lineWidth=1.1; ctx.lineJoin="round"; ctx.beginPath();
+  let started=false;
+  for(let k=0;k<mag.length;k++){
+    const f=k*binHz; if(f<fmin) continue; if(f>fmax) break;
+    const x=padL+iw*((f-fmin)/(fmax-fmin||1));
+    started?ctx.lineTo(x,Y(mag[k])):ctx.moveTo(x,Y(mag[k])); started=true;
+  }
+  ctx.stroke();
+}
+function maxAbs(arrs){ let m=0; for(const a of arrs){ if(a) for(const v of a){ const av=Math.abs(v); if(av>m)m=av; } } return m; }
+function maxInRange(mags, fs, fmin, fmax){
+  let m=0;
+  for(const mag of mags){ if(!mag) continue; const N=(mag.length-1)*2, binHz=fs/N;
+    for(let k=0;k<mag.length;k++){ const f=k*binHz; if(f<fmin)continue; if(f>fmax)break; if(mag[k]>m)m=mag[k]; } }
+  return m;
+}
+// RMS trend: y = RMS (g), x = reading number (rolling)
+function drawTrend(canvas, hist){
+  const {ctx,w,h}=prep(canvas);
+  ctx.clearRect(0,0,w,h);
+  const padL=58,padR=12,padT=10,padB=20, iw=w-padL-padR, ih=h-padT-padB;
+  let m=0,n=0;
+  for(const ax of ["x","y","z"]){ const d=hist[ax]||[]; n=Math.max(n,d.length); for(const v of d) if(v>m)m=v; }
+  const top = m>0 ? m*1.1 : 1;
+  const Y = v => padT + ih*(1-v/top);
+  ctx.strokeStyle=CSS("--line"); ctx.lineWidth=1; ctx.strokeRect(padL,padT,iw,ih);
+  for(const tv of niceTicks(0,top,3)){
+    const y=Y(tv);
+    ctx.strokeStyle=CSS("--grid");
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+    tickText(ctx, fmtTick(tv), padL-6, y, "right");
+  }
+  if(n>1) for(const tv of [...new Set(niceTicks(1,n,5).map(Math.round))]){
+    const x=padL+iw*((tv-1)/(Math.max(n,2)-1));
+    tickText(ctx, String(Math.round(tv)), x, h-6, "center");
+  }
+  if(m<=0||n<2) return;
+  for(const ax of ["x","y","z"]){
+    const d=hist[ax]||[]; if(d.length<2) continue;
+    ctx.strokeStyle=AXCOL[ax]; ctx.lineWidth=1.6; ctx.lineJoin="round"; ctx.beginPath();
+    for(let i=0;i<d.length;i++){ const x=padL+iw*(i/(Math.max(n,2)-1)); i?ctx.lineTo(x,Y(d[i])):ctx.moveTo(x,Y(d[i])); }
+    ctx.stroke();
+  }
+}
+
+function setTag(el, text, cls){ el.className = "tag " + cls; el.textContent = text; }
+function ageText(ts){
+  if(!ts) return "—";
+  const s = (Date.now()/1000) - ts;
+  if(s < 1.5) return "just now";
+  if(s < 60) return Math.floor(s) + "s ago";
+  return Math.floor(s/60) + "m ago";
+}
+function fmt(v){ return (v===null||v===undefined) ? "—" : Number(v).toFixed(4); }
+
+let comFocused = false, paramsShown = false;
+const AXIS_ENC = {XYZ:"111", XY:"110", XZ:"101", X:"100", YZ:"11", Y:"10", Z:"1"};
+$("fCom").addEventListener("focus", ()=>comFocused=true);
+$("fCom").addEventListener("blur", ()=>comFocused=false);
+
+async function poll(){
+  try{
+    const s = await (await fetch("/api/status")).json();
+    const pill = $("modePill"), mt = $("modeText");
+    const map = { idle:["Idle",""], connecting:["Connecting…","wait"],
+                  live:["Live","live"], demo:["Demo","wait"], error:["Error","err"] };
+    const [label,pcls] = map[s.mode] || ["—",""];
+    pill.className = "pill " + pcls; mt.textContent = label;
+
+    if(s.manager==="connected") setTag($("mgrTag"),"Connected","ok");
+    else if(s.manager==="connecting") setTag($("mgrTag"),"Connecting…","warn");
+    else setTag($("mgrTag"),"Disconnected","idle");
+
+    if(s.mote_state==="operational") setTag($("moteTag"), s.mote_mac||"Operational","ok");
+    else if(s.mote_state==="not found") setTag($("moteTag"),"Not found","bad");
+    else setTag($("moteTag"),"—","idle");
+
+    const flowing = !!s.data_flowing;
+    if(flowing) setTag($("flowTag"),"Receiving","ok");
+    else if(s.mode==="live"||s.mode==="demo") setTag($("flowTag"),"Waiting","warn");
+    else setTag($("flowTag"),"Idle","idle");
+
+    if(!comFocused && s.com_port && s.com_port!=="auto (next connect)" && $("fCom").value===""){
+      $("fCom").placeholder = s.com_port;
+    }
+
+    const rms = s.rms || {};
+    $("valX").textContent = fmt(rms.x);
+    $("valY").textContent = fmt(rms.y);
+    $("valZ").textContent = fmt(rms.z);
+    ["x","y","z"].forEach(a=>{
+      $("axis"+a.toUpperCase()).classList.toggle("active", s.last_axis===a && flowing);
+    });
+
+    $("lastSeen").textContent = ageText(s.last_packet_ts);
+    $("pkts").textContent = s.packets_total;
+    $("frames").textContent = s.frames_total;
+    $("offState").textContent = s.offset_active ? "on" : "off";
+    $("errLine").textContent = s.last_error ? ("last error · " + s.last_error) : ($("errLine").textContent||"");
+    if(s.save_error) $("errLine").textContent = "save · " + s.save_error;
+
+    // recording indicators
+    recording = !!s.recording;
+    const seg = s.seg_axes || {};
+    $("ledX").classList.toggle("on", !!seg.x);
+    $("ledY").classList.toggle("on", !!seg.y);
+    $("ledZ").classList.toggle("on", !!seg.z);
+    $("segCount").textContent = s.segments_saved || 0;
+    const rb = $("recBtn");
+    if(recording){ rb.textContent = "Stop recording"; rb.classList.remove("primary"); rb.classList.add("ghost"); }
+    else { rb.textContent = "Start recording"; rb.classList.add("primary"); rb.classList.remove("ghost"); }
+
+    // ---- plots ----
+    if(!paramsShown && s.active_params){
+      const ap = s.active_params, ax = Object.keys(AXIS_ENC).find(k=>AXIS_ENC[k]===String(ap.axis_select));
+      if(ap.sampling_frequency) $("fFreq").value = ap.sampling_frequency;
+      if(ap.adc_num_samples) $("fSamp").value = ap.adc_num_samples;
+      if(ax) $("fAxis").value = ax;
+      if(ap.sleep_dur!==undefined && ap.sleep_dur!==null) $("fSleep").value = String(ap.sleep_dur);
+      paramsShown = true;
+    }
+    const fs = Number(s.active_params.sampling_frequency) || 512;
+    const wave = s.wave || {x:[],y:[],z:[]};
+    const fft  = s.fft  || {x:[],y:[],z:[]};
+    const yT = maxAbs([wave.x,wave.y,wave.z]) || 1;   // shared time-domain ylim
+    drawLine($("tX"), [{data:wave.x,color:AXCOL.x}], -yT, yT);
+    drawLine($("tY"), [{data:wave.y,color:AXCOL.y}], -yT, yT);
+    drawLine($("tZ"), [{data:wave.z,color:AXCOL.z}], -yT, yT);
+    let fmin = Number($("fftMin").value)||0, fmax = Number($("fftMax").value)||200;
+    if(fmax<=fmin) fmax = fmin+1;
+    const yF = maxInRange([fft.x,fft.y,fft.z], fs, fmin, fmax) || 1;  // shared FFT ylim
+    drawFFT($("fX"), fft.x, fs, fmin, fmax, yF, AXCOL.x);
+    drawFFT($("fY"), fft.y, fs, fmin, fmax, yF, AXCOL.y);
+    drawFFT($("fZ"), fft.z, fs, fmin, fmax, yF, AXCOL.z);
+    drawTrend($("rmsTrend"), s.rms_hist || {x:[],y:[],z:[]});
+
+    // ---- prediction + turbine ----
+    predicting = !!s.predicting;
+    const pb = $("predBtn");
+    if(predicting){ pb.textContent="Stop prediction"; pb.classList.remove("primary"); pb.classList.add("ghost"); }
+    else { pb.textContent="Run prediction"; pb.classList.add("primary"); pb.classList.remove("ghost"); }
+
+    const statusIcon = $("statusIcon");
+    const p = s.prediction;
+    $("predWarn").textContent = s.predict_error ? ("model · " + s.predict_error) : "";
+    if(predicting && p){
+      const healthy = !!p.healthy;
+      $("predLabel").textContent = p.label;
+      $("predLabel").className = "predlabel " + (healthy ? "ok" : "bad");
+      $("predConf").textContent = (p.confidence*100).toFixed(1) + "%";
+      $("predLat").textContent = p.latency_ms + " ms";
+      statusIcon.setAttribute("class", "statusicon " + (healthy ? "healthy" : "fault"));
+      $("turbState").textContent = healthy ? "normal" : "fault detected";
+      // probability bars (sorted desc)
+      const entries = Object.entries(p.probs||{}).sort((a,b)=>b[1]-a[1]);
+      $("probBars").innerHTML = entries.map(([k,v],i)=>`
+        <div class="pbar ${i===0?'top':''}">
+          <span>${k}</span>
+          <span class="track"><span class="fill" style="width:${(v*100).toFixed(0)}%"></span></span>
+          <span>${(v*100).toFixed(1)}%</span>
+        </div>`).join("");
+    } else if(!predicting){
+      statusIcon.setAttribute("class", "statusicon idle");
+      $("turbState").textContent = "idle";
+      if(!p){ $("predLabel").textContent="—"; $("predLabel").className="predlabel"; }
+    }
+
+    const connected = (s.mode!=="idle" && s.mode!=="error");
+    $("connectBtn").disabled = connected;
+    $("disconnectBtn").disabled = !connected;
+  }catch(e){}
+}
+setInterval(poll, 1000); poll();
+
+/* ---- recording ---- */
+function timestamp(){
+  const d = new Date(), z = n => String(n).padStart(2,"0");
+  return `recording_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+}
+function buildFilename(){
+  let name = ($("rName").value||"").trim() || timestamp();
+  name = name.replace(/\.[a-zA-Z0-9]+$/, "") + "." + $("rFmt").value;
+  $("fnPreview").textContent = name;
+  return name;
+}
+["rName","rFmt"].forEach(id=>{
+  $(id).addEventListener("input", buildFilename);
+  $(id).addEventListener("change", buildFilename);
+});
+buildFilename();
+
+let chosenFolder = "";
+$("browseBtn").onclick = async ()=>{
+  const b=$("browseBtn"), old=b.textContent; b.textContent="Opening…";
+  try{
+    const r = await (await fetch("/api/choose_folder",{method:"POST"})).json();
+    if(r.path){ chosenFolder = r.path; $("fFolder").value = r.path; }
+    else if(r.error){ $("errLine").textContent = "folder picker · " + r.error; }
+  }catch(e){}
+  b.textContent = old;
+};
+
+let recording = false;
+$("recBtn").onclick = async ()=>{
+  if(!recording){
+    const filename = buildFilename();
+    const r = await (await fetch("/api/record/start",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({folder:chosenFolder, filename, format:$("rFmt").value})})).json();
+    if(!r.ok){ $("errLine").textContent = "record · " + (r.error||"failed"); return; }
+    $("errLine").textContent = "";
+  } else {
+    await fetch("/api/record/stop",{method:"POST"});
+  }
+};
+
+let predicting = false;
+$("predBtn").onclick = async ()=>{
+  if(!predicting){ await fetch("/api/predict/start",{method:"POST"}); }
+  else { await fetch("/api/predict/stop",{method:"POST"}); }
+  poll();
+};
+
+$("connectBtn").onclick = async ()=>{
+  await fetch("/api/connect",{method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({com_port:$("fCom").value})});
+  poll();
+};
+$("disconnectBtn").onclick = async ()=>{ await fetch("/api/disconnect",{method:"POST"}); poll(); };
+$("offsetBtn").onclick = async ()=>{
+  const b=$("offsetBtn"), old=b.textContent; b.textContent="Captured ✓";
+  await fetch("/api/remove_offset",{method:"POST"});
+  setTimeout(()=>b.textContent=old,1200);
+};
+$("applyBtn").onclick = async ()=>{
+  const body = {
+    sampling_frequency: $("fFreq").value,
+    adc_num_samples: $("fSamp").value,
+    axis_select: $("fAxis").value,
+    sleep_dur: $("fSleep").value
+  };
+  const b=$("applyBtn"), old=b.textContent; b.textContent="Applied ✓";
+  await fetch("/api/params",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  setTimeout(()=>b.textContent=old,1200); poll();
+};
+</script>
+</body>
+</html>
